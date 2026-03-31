@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:river_watch/screens/add_reading_screen.dart';
+import 'package:river_watch/screens/profile_screen.dart';
+import 'package:river_watch/screens/contact_screen.dart';
 import 'package:river_watch/services/api_service.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -11,39 +13,67 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final ApiService _api = ApiService();
-  dynamic _userStation; // Single station object
+
+  dynamic _userStation;
+  Map<String, dynamic> _readingStatus = {};
   bool _isLoading = true;
+  String _todayDate = "";
 
   @override
   void initState() {
     super.initState();
-    _loadUserStation();
+    _loadAllData();
   }
 
-  Future<void> _loadUserStation() async {
+  Future<void> _loadAllData() async {
     if (!mounted) return;
 
+    setState(() => _isLoading = true);
+
     try {
+      // Load Station
       final stations = await _api.getUserStations();
-      print(stations);
-      print('dsadsa');
-      if (mounted) {
-        setState(() {
-          _userStation = stations.isNotEmpty ? stations.first : null;
-          _isLoading = false;
-        });
+      if (stations.isNotEmpty) {
+        _userStation = stations.first;
+      }
+
+      // Load Reading Status (if station exists)
+      if (_userStation != null) {
+        final status = await _api.getReadingTimeStatus(
+          _userStation['stationUserId'].toString(),
+        );
+        _readingStatus = status;
+        _todayDate = status['today'] ?? "";
       }
     } catch (e) {
-      print("Error loading station: $e");
-      if (mounted) setState(() => _isLoading = false);
+      print("Error loading data: $e");
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
-  // Direct navigation - No checks
+  // Check if a time slot is still missing
+  bool _isSlotMissing(String timeOfDay) {
+    final key = "is${timeOfDay}Missing";
+    return _readingStatus[key] ?? true; // default to true (allow) if not found
+  }
+
   void _goToAddReading(String timeOfDay) {
     if (_userStation == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Station not loaded yet. Please wait.")),
+      );
+      return;
+    }
+
+    if (!_isSlotMissing(timeOfDay)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("You have already submitted $timeOfDay reading today."),
+          backgroundColor: Colors.orange,
+        ),
       );
       return;
     }
@@ -53,7 +83,7 @@ class _HomeScreenState extends State<HomeScreen> {
       MaterialPageRoute(
         builder: (_) => AddReadingScreen(
           timeOfDay: timeOfDay,
-          station: _userStation, // Pass single station
+          station: _userStation,
         ),
       ),
     );
@@ -64,20 +94,28 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       drawer: Drawer(
         child: ListView(
+          padding: EdgeInsets.zero,
           children: [
             DrawerHeader(
               decoration: const BoxDecoration(
-                gradient: LinearGradient(colors: [Colors.blue, Colors.indigo]),
+                gradient: LinearGradient(
+                  colors: [Colors.blue, Colors.indigo],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
               ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const Icon(Icons.water_drop, size: 80, color: Colors.white),
-                  const Text("River Watch",
-                      style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white)),
+                  const SizedBox(height: 10),
+                  const Text(
+                    "River Watch",
+                    style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white),
+                  ),
                 ],
               ),
             ),
@@ -86,6 +124,25 @@ class _HomeScreenState extends State<HomeScreen> {
               title: const Text("Home"),
               onTap: () => Navigator.pop(context),
             ),
+            ListTile(
+              leading: const Icon(Icons.person),
+              title: const Text("Profile"),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const ProfileScreen()));
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.contact_phone),
+              title: const Text("Contact"),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const ContactScreen()));
+              },
+            ),
+            const Divider(),
             ListTile(
               leading: const Icon(Icons.logout, color: Colors.red),
               title: const Text("Logout"),
@@ -106,6 +163,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: SafeArea(
           child: Column(
             children: [
+              // Top Bar
               Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -119,16 +177,18 @@ class _HomeScreenState extends State<HomeScreen> {
                         onPressed: () => Scaffold.of(context).openDrawer(),
                       ),
                     ),
-                    const Text("River Watch",
-                        style: TextStyle(
-                            fontSize: 26,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white)),
+                    const Text(
+                      "River Watch",
+                      style: TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white),
+                    ),
                     const SizedBox(width: 48),
                   ],
                 ),
               ),
-              const SizedBox(height: 30),
+
               const Text("Good Morning,",
                   style: TextStyle(fontSize: 24, color: Colors.white70)),
               const Text("River Handler",
@@ -136,8 +196,19 @@ class _HomeScreenState extends State<HomeScreen> {
                       fontSize: 32,
                       fontWeight: FontWeight.bold,
                       color: Colors.white)),
+
+              if (_todayDate.isNotEmpty)
+                Text("Today: $_todayDate",
+                    style:
+                        const TextStyle(fontSize: 16, color: Colors.white70)),
+
+              const SizedBox(height: 10),
               const Text("Select Time of Day",
                   style: TextStyle(fontSize: 18, color: Colors.white70)),
+
+              const SizedBox(height: 20),
+
+              // Time Cards
               Expanded(
                 child: _isLoading
                     ? const Center(
@@ -145,6 +216,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     : Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 20),
                         child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             _buildTimeCard(
                                 "Morning", Icons.wb_sunny, Colors.orange),
@@ -166,27 +238,48 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildTimeCard(String title, IconData icon, Color color) {
+    final isMissing = _isSlotMissing(title);
+    final isEnabled = isMissing;
+
     return GestureDetector(
-      onTap: () => _goToAddReading(title),
-      child: Container(
-        height: 140,
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.15),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: Colors.white.withOpacity(0.25)),
-          boxShadow: [BoxShadow(color: color.withOpacity(0.4), blurRadius: 20)],
-        ),
-        child: Row(
-          children: [
-            const SizedBox(width: 30),
-            Icon(icon, size: 70, color: color),
-            const SizedBox(width: 30),
-            Text(title,
-                style: const TextStyle(
-                    fontSize: 34,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white)),
-          ],
+      onTap: isEnabled ? () => _goToAddReading(title) : null,
+      child: Opacity(
+        opacity: isEnabled ? 1.0 : 0.65,
+        child: Container(
+          height: 140,
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Colors.white.withOpacity(0.25)),
+            boxShadow: [
+              BoxShadow(color: color.withOpacity(0.35), blurRadius: 20)
+            ],
+          ),
+          child: Row(
+            children: [
+              const SizedBox(width: 30),
+              Icon(icon, size: 70, color: color),
+              const SizedBox(width: 30),
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                        fontSize: 34,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white),
+                  ),
+                  if (!isEnabled)
+                    const Text(
+                      "Already Submitted",
+                      style: TextStyle(fontSize: 14, color: Colors.white70),
+                    ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

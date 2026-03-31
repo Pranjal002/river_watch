@@ -230,6 +230,36 @@ class ApiService {
     }
   }
 
+// ====================== GET READING TIME STATUS ======================
+  Future<Map<String, dynamic>> getReadingTimeStatus(
+      String stationUserId) async {
+    print(stationUserId);
+    final token = await getToken();
+    if (token == null) throw Exception("No token found");
+
+    final fullUrl = "$baseUrl/gauge-reading/reading-time-status/$stationUserId";
+
+    print('🌐 Hitting Reading Status URL: $fullUrl');
+
+    final response = await http.get(
+      Uri.parse(fullUrl),
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $token",
+      },
+    );
+
+    print('📥 Reading Status Code: ${response.statusCode}');
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      print('✅ Reading Status Response: $data');
+      return data['data'] ?? {};
+    } else {
+      throw Exception("Failed to load reading status: ${response.statusCode}");
+    }
+  }
+
   Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
