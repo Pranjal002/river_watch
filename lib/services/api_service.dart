@@ -163,10 +163,11 @@ class ApiService {
   }
 
   /// ====================== SUBMIT GAUGE READING (Clean & Fixed) ======================
+  /// ====================== SUBMIT GAUGE READING (Updated for PNG) ======================
   Future<void> submitGaugeReading({
     required String stationUserId,
     required double gaugeReading,
-    required int readingTime, // 1=Morning, 2=Evening, 3=Night
+    required int readingTime,
     required String remarks,
     File? imageFile,
   }) async {
@@ -185,26 +186,52 @@ class ApiService {
 
     // Image (if provided)
     if (imageFile != null) {
+      // Verify file exists and has content
+      if (!await imageFile.exists()) {
+        throw Exception("Image file does not exist");
+      }
+
+      final fileSize = await imageFile.length();
+      if (fileSize == 0) {
+        throw Exception("Image file is empty");
+      }
+
+      print("📸 Adding image: ${imageFile.path}, Size: $fileSize bytes");
+
+      // Always send as PNG since we've converted it
       request.files.add(
         await http.MultipartFile.fromPath(
           'Image',
           imageFile.path,
-          contentType: MediaType('image', 'jpeg'), // 🔥 FORCE TYPE
+          contentType: MediaType('image', 'png'), // Force PNG content type
         ),
       );
     }
 
-    final streamedResponse = await request.send();
-    final response = await http.Response.fromStream(streamedResponse);
+    print("===== FINAL REQUEST DATA =====");
+    print("GaugeReading: $gaugeReading");
+    print("StationUserId: $stationUserId");
+    print("ReadingTime: $readingTime");
+    print("Remarks: $remarks");
+    print("Image: ${imageFile?.path ?? 'No image'}");
+    print("==============================");
 
-    print("📤 Submit Status: ${response.statusCode}");
-    print("📥 Response Body: ${response.body}");
+    try {
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
 
-    if (response.statusCode == 200 || response.statusCode == 201) {
-      print("✅ Gauge Reading Submitted Successfully");
-    } else {
-      throw Exception(
-          "Failed to submit gauge reading: ${response.statusCode} - ${response.body}");
+      print("📤 Submit Status: ${response.statusCode}");
+      print("📥 Response Body: ${response.body}");
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        print("✅ Gauge Reading Submitted Successfully");
+      } else {
+        throw Exception(
+            "Failed to submit gauge reading: ${response.statusCode} - ${response.body}");
+      }
+    } catch (e) {
+      print("❌ Error submitting reading: $e");
+      throw Exception("Error submitting reading: ${e.toString()}");
     }
   }
 
@@ -227,6 +254,28 @@ class ApiService {
       return data['photoUrl'] ?? '';
     } else {
       throw Exception("Photo upload failed");
+    }
+  }
+
+// Add this method in ApiService
+  Future<Map<String, dynamic>> getPendingUploads(String stationUserId) async {
+    final token = await getToken();
+    if (token == null) throw Exception("No token found");
+
+    final url = "$baseUrl/gauge-reading/pending/$stationUserId";
+
+    final response = await http.get(
+      Uri.parse(url),
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $token",
+      },
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception("Failed to load pending uploads");
     }
   }
 

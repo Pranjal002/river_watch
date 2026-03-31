@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:river_watch/screens/add_reading_screen.dart';
 import 'package:river_watch/screens/profile_screen.dart';
 import 'package:river_watch/screens/contact_screen.dart';
 import 'package:river_watch/services/api_service.dart';
+import 'package:river_watch/screens/past_uploads_screen.dart'; // ← New Screen
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -17,7 +19,16 @@ class _HomeScreenState extends State<HomeScreen> {
   dynamic _userStation;
   Map<String, dynamic> _readingStatus = {};
   bool _isLoading = true;
-  String _todayDate = "";
+
+  static const Color _bg = Color(0xFF0D1117);
+  static const Color _card = Color(0xFF161B22);
+  static const Color _cardBorder = Color(0xFF30363D);
+  static const Color _textPrimary = Color(0xFFE6EDF3);
+  static const Color _textSecondary = Color(0xFF8B949E);
+  static const Color _green = Color(0xFF2EA043);
+  static const Color _greenLight = Color(0xFF3FB950);
+  static const Color _amber = Color(0xFFD29922);
+  static const Color _amberLight = Color(0xFFE3B341);
 
   @override
   void initState() {
@@ -27,57 +38,57 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadAllData() async {
     if (!mounted) return;
-
     setState(() => _isLoading = true);
 
     try {
-      // Load Station
       final stations = await _api.getUserStations();
       if (stations.isNotEmpty) {
         _userStation = stations.first;
       }
-
-      // Load Reading Status (if station exists)
       if (_userStation != null) {
         final status = await _api.getReadingTimeStatus(
           _userStation['stationUserId'].toString(),
         );
         _readingStatus = status;
-        _todayDate = status['today'] ?? "";
       }
     } catch (e) {
       print("Error loading data: $e");
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // Check if a time slot is still missing
-  bool _isSlotMissing(String timeOfDay) {
-    final key = "is${timeOfDay}Missing";
-    return _readingStatus[key] ?? true; // default to true (allow) if not found
+  /// Returns 'done', 'due', or 'upcoming'
+  String _getSlotStatus(String slot) {
+    // API keys: isMorningMissing, isAfternoonMissing, isEveningMissing
+    final key = 'is${slot}Missing';
+    final isMissing = _readingStatus[key];
+    if (isMissing == null) return 'upcoming';
+    return isMissing ? 'due' : 'done';
+  }
+
+  String get _todayFormatted {
+    final today = _readingStatus['today'];
+    if (today == null) {
+      return DateFormat('EEE, d MMMM yyyy').format(DateTime.now());
+    }
+    try {
+      return DateFormat('EEE, d MMMM yyyy').format(DateTime.parse(today));
+    } catch (_) {
+      return today.toString();
+    }
   }
 
   void _goToAddReading(String timeOfDay) {
     if (_userStation == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Station not loaded yet. Please wait.")),
-      );
+      _showSnack("Station not loaded yet. Please wait.");
       return;
     }
-
-    if (!_isSlotMissing(timeOfDay)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("You have already submitted $timeOfDay reading today."),
-          backgroundColor: Colors.orange,
-        ),
-      );
+    if (_getSlotStatus(timeOfDay) == 'done') {
+      _showSnack("$timeOfDay reading already submitted today.",
+          isWarning: true);
       return;
     }
-
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -86,202 +97,422 @@ class _HomeScreenState extends State<HomeScreen> {
           station: _userStation,
         ),
       ),
+    ).then((_) => _loadAllData());
+  }
+
+  void _showSnack(String msg, {bool isWarning = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: isWarning ? _amber : Colors.red.shade800,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final fullName = _userStation?['fullName'] ?? 'River Handler';
+    final stationName = _userStation?['stationName'] ?? '';
+
     return Scaffold(
-      drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
+      backgroundColor: _bg,
+      drawer: _buildDrawer(),
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            DrawerHeader(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Colors.blue, Colors.indigo],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+            _buildTopBar(),
+            const SizedBox(height: 24),
+            _buildGreeting(fullName, stationName),
+            const SizedBox(height: 20),
+            _buildDateCard(),
+            const SizedBox(height: 28),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Text(
+                "TODAY'S READINGS",
+                style: TextStyle(
+                  color: _textSecondary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 1.2,
                 ),
               ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.water_drop, size: 80, color: Colors.white),
-                  const SizedBox(height: 10),
-                  const Text(
-                    "River Watch",
-                    style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white),
-                  ),
-                ],
-              ),
             ),
-            ListTile(
-              leading: const Icon(Icons.home),
-              title: const Text("Home"),
-              onTap: () => Navigator.pop(context),
-            ),
-            ListTile(
-              leading: const Icon(Icons.person),
-              title: const Text("Profile"),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const ProfileScreen()));
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.contact_phone),
-              title: const Text("Contact"),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const ContactScreen()));
-              },
-            ),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.logout, color: Colors.red),
-              title: const Text("Logout"),
-              onTap: () => _api.logout().then(
-                  (_) => Navigator.pushReplacementNamed(context, '/login')),
+            const SizedBox(height: 12),
+            Expanded(
+              child: _isLoading
+                  ? const Center(
+                      child:
+                          CircularProgressIndicator(color: Color(0xFF2EA043)))
+                  : _buildReadingCards(),
             ),
           ],
-        ),
-      ),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6), Color(0xFF60A5FA)],
-          ),
-        ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              // Top Bar
-              Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Builder(
-                      builder: (context) => IconButton(
-                        icon: const Icon(Icons.menu,
-                            color: Colors.white, size: 30),
-                        onPressed: () => Scaffold.of(context).openDrawer(),
-                      ),
-                    ),
-                    const Text(
-                      "River Watch",
-                      style: TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white),
-                    ),
-                    const SizedBox(width: 48),
-                  ],
-                ),
-              ),
-
-              const Text("Good Morning,",
-                  style: TextStyle(fontSize: 24, color: Colors.white70)),
-              const Text("River Handler",
-                  style: TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white)),
-
-              if (_todayDate.isNotEmpty)
-                Text("Today: $_todayDate",
-                    style:
-                        const TextStyle(fontSize: 16, color: Colors.white70)),
-
-              const SizedBox(height: 10),
-              const Text("Select Time of Day",
-                  style: TextStyle(fontSize: 18, color: Colors.white70)),
-
-              const SizedBox(height: 20),
-
-              // Time Cards
-              Expanded(
-                child: _isLoading
-                    ? const Center(
-                        child: CircularProgressIndicator(color: Colors.white))
-                    : Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            _buildTimeCard(
-                                "Morning", Icons.wb_sunny, Colors.orange),
-                            const SizedBox(height: 20),
-                            _buildTimeCard(
-                                "Evening", Icons.wb_twilight, Colors.purple),
-                            const SizedBox(height: 20),
-                            _buildTimeCard(
-                                "Night", Icons.nightlight_round, Colors.indigo),
-                          ],
-                        ),
-                      ),
-              ),
-            ],
-          ),
         ),
       ),
     );
   }
 
-  Widget _buildTimeCard(String title, IconData icon, Color color) {
-    final isMissing = _isSlotMissing(title);
-    final isEnabled = isMissing;
-
-    return GestureDetector(
-      onTap: isEnabled ? () => _goToAddReading(title) : null,
-      child: Opacity(
-        opacity: isEnabled ? 1.0 : 0.65,
-        child: Container(
-          height: 140,
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.15),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Colors.white.withOpacity(0.25)),
-            boxShadow: [
-              BoxShadow(color: color.withOpacity(0.35), blurRadius: 20)
-            ],
+  Widget _buildTopBar() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: [
+          Builder(
+            builder: (ctx) => GestureDetector(
+              onTap: () => Scaffold.of(ctx).openDrawer(),
+              child: Icon(Icons.menu, color: _textPrimary, size: 26),
+            ),
           ),
-          child: Row(
-            children: [
-              const SizedBox(width: 30),
-              Icon(icon, size: 70, color: color),
-              const SizedBox(width: 30),
-              Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
+          const SizedBox(width: 14),
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: _green,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.water_drop, color: Colors.white, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              "RiverWatch Nepal",
+              style: TextStyle(
+                color: _textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(
+              color: _greenLight,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(color: _greenLight.withOpacity(0.5), blurRadius: 6)
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGreeting(String fullName, String stationName) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text("Good morning,",
+              style: TextStyle(color: _textSecondary, fontSize: 16)),
+          const SizedBox(height: 4),
+          Text(
+            fullName,
+            style: TextStyle(
+              color: _textPrimary,
+              fontSize: 30,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.5,
+            ),
+          ),
+          if (stationName.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: _green.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: _green.withOpacity(0.4)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                        fontSize: 34,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white),
-                  ),
-                  if (!isEnabled)
-                    const Text(
-                      "Already Submitted",
-                      style: TextStyle(fontSize: 14, color: Colors.white70),
+                  Container(
+                    width: 7,
+                    height: 7,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF3FB950),
+                      shape: BoxShape.circle,
                     ),
+                  ),
+                  const SizedBox(width: 7),
+                  Text(
+                    "$stationName · Active",
+                    style: TextStyle(
+                      color: _greenLight,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ],
               ),
-            ],
-          ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDateCard() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        decoration: BoxDecoration(
+          color: _card,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: _cardBorder),
+        ),
+        child: Row(
+          children: [
+            Text(
+              "TODAY",
+              style: TextStyle(
+                color: _textSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 1.1,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              _todayFormatted,
+              style: TextStyle(
+                color: _textPrimary,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ),
       ),
+    );
+  }
+
+  Widget _buildReadingCards() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        children: [
+          _buildSlotCard(slot: "Morning", time: "6:00 – 8:00 AM", emoji: "🌅"),
+          const SizedBox(height: 12),
+          _buildSlotCard(
+              slot: "Afternoon", time: "12:00 – 2:00 PM", emoji: "☀️"),
+          const SizedBox(height: 12),
+          _buildSlotCard(slot: "Evening", time: "6:00 – 8:00 PM", emoji: "🌙"),
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSlotCard(
+      {required String slot, required String time, required String emoji}) {
+    final status = _getSlotStatus(slot);
+    final isDone = status == 'done';
+    final isDue = status == 'due';
+
+    return GestureDetector(
+      onTap: () => _goToAddReading(slot),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+        decoration: BoxDecoration(
+          color: _card,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isDue
+                ? _amber.withOpacity(0.5)
+                : isDone
+                    ? _green.withOpacity(0.3)
+                    : _cardBorder,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: isDone
+                    ? _green.withOpacity(0.12)
+                    : isDue
+                        ? _amber.withOpacity(0.12)
+                        : Colors.white.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Center(
+                child: Text(emoji, style: const TextStyle(fontSize: 26)),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(slot,
+                      style: TextStyle(
+                          color: _textPrimary,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 3),
+                  Text(time,
+                      style: TextStyle(color: _textSecondary, fontSize: 13)),
+                ],
+              ),
+            ),
+            _buildStatusBadge(status),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusBadge(String status) {
+    if (status == 'done') {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: _green.withOpacity(0.15),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: _green.withOpacity(0.3)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.check, color: _greenLight, size: 14),
+            const SizedBox(width: 4),
+            Text("Done",
+                style: TextStyle(
+                    color: _greenLight,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700)),
+          ],
+        ),
+      );
+    } else if (status == 'due') {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: _amber.withOpacity(0.15),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: _amber.withOpacity(0.4)),
+        ),
+        child: Text("Due now",
+            style: TextStyle(
+                color: _amberLight, fontSize: 13, fontWeight: FontWeight.w700)),
+      );
+    } else {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: _cardBorder),
+        ),
+        child: Text("Upcoming",
+            style: TextStyle(
+                color: _textSecondary,
+                fontSize: 13,
+                fontWeight: FontWeight.w600)),
+      );
+    }
+  }
+
+  Widget _buildDrawer() {
+    return Drawer(
+      backgroundColor: _card,
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          DrawerHeader(
+            decoration: BoxDecoration(
+              color: _bg,
+              border: Border(bottom: BorderSide(color: _cardBorder)),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: _green,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(Icons.water_drop,
+                      size: 30, color: Colors.white),
+                ),
+                const SizedBox(height: 12),
+                Text("RiverWatch Nepal",
+                    style: TextStyle(
+                        color: _textPrimary,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700)),
+                Text("River Monitoring System",
+                    style: TextStyle(color: _textSecondary, fontSize: 12)),
+              ],
+            ),
+          ),
+          _drawerTile(
+              Icons.home_outlined, "Home", () => Navigator.pop(context)),
+          // NEW: Past Uploads Tab (just above Profile)
+
+          _drawerTile(Icons.history, "Past Uploads", () {
+            Navigator.pop(context);
+            if (_userStation != null) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => PastUploadsScreen(
+                    stationUserId: _userStation['stationUserId'].toString(),
+                  ),
+                ),
+              );
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("Station not loaded yet")),
+              );
+            }
+          }),
+          _drawerTile(Icons.person_outline, "Profile", () {
+            Navigator.pop(context);
+            Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const ProfileScreen()));
+          }),
+          _drawerTile(Icons.contact_phone_outlined, "Contact", () {
+            Navigator.pop(context);
+            Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const ContactScreen()));
+          }),
+          Divider(color: _cardBorder, thickness: 1),
+          _drawerTile(Icons.logout, "Logout", () {
+            _api
+                .logout()
+                .then((_) => Navigator.pushReplacementNamed(context, '/login'));
+          }, color: Colors.red.shade400),
+        ],
+      ),
+    );
+  }
+
+  Widget _drawerTile(IconData icon, String title, VoidCallback onTap,
+      {Color? color}) {
+    return ListTile(
+      leading: Icon(icon, color: color ?? _textSecondary, size: 22),
+      title: Text(title,
+          style: TextStyle(
+              color: color ?? _textPrimary,
+              fontSize: 15,
+              fontWeight: FontWeight.w500)),
+      onTap: onTap,
+      horizontalTitleGap: 8,
     );
   }
 }
