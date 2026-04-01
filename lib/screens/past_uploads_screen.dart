@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:river_watch/screens/add_reading_screen.dart'; // ✅ new import
 import 'package:river_watch/services/api_service.dart';
 
 class PastUploadsScreen extends StatefulWidget {
   final String stationUserId;
+  final dynamic station; // ✅ new: full station object
 
-  const PastUploadsScreen({super.key, required this.stationUserId});
+  const PastUploadsScreen({
+    super.key,
+    required this.stationUserId,
+    required this.station, // ✅ new
+  });
 
   @override
   State<PastUploadsScreen> createState() => _PastUploadsScreenState();
@@ -16,7 +22,6 @@ class _PastUploadsScreenState extends State<PastUploadsScreen> {
   List<Map<String, dynamic>> _missingReadings = [];
   bool _isLoading = true;
 
-  // Dark theme colors (matching home screen)
   static const Color _bg = Color(0xFF0D1117);
   static const Color _card = Color(0xFF161B22);
   static const Color _cardBorder = Color(0xFF30363D);
@@ -39,15 +44,14 @@ class _PastUploadsScreenState extends State<PastUploadsScreen> {
       final data = await _api.getPendingUploads(widget.stationUserId);
       final missingByDate = data['missingByDate'] as List? ?? [];
 
-      // Flatten the data into individual reading cards
       final List<Map<String, dynamic>> flattened = [];
       for (var dateGroup in missingByDate) {
-        final dateStr = dateGroup['date'] as String;
+        final dateStr = dateGroup['date'] as String; // raw "2026-03-25"
         final missingSlots = dateGroup['missingSlots'] as List;
 
         for (var slot in missingSlots) {
           flattened.add({
-            'date': dateStr,
+            'date': dateStr, // ✅ keep raw date string for passing to screen
             'slot': slot['label'],
             'time': _getTimeForSlot(slot['label']),
             'emoji': _getEmojiForSlot(slot['label']),
@@ -109,10 +113,7 @@ class _PastUploadsScreenState extends State<PastUploadsScreen> {
         elevation: 0,
         title: const Text(
           "Missing Readings",
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-          ),
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
         ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
@@ -131,7 +132,7 @@ class _PastUploadsScreenState extends State<PastUploadsScreen> {
                         width: 80,
                         height: 80,
                         decoration: BoxDecoration(
-                          color: Color(0xFF2EA043).withOpacity(0.15),
+                          color: const Color(0xFF2EA043).withOpacity(0.15),
                           borderRadius: BorderRadius.circular(40),
                         ),
                         child: const Icon(
@@ -165,18 +166,28 @@ class _PastUploadsScreenState extends State<PastUploadsScreen> {
                   itemCount: _missingReadings.length,
                   itemBuilder: (context, index) {
                     final reading = _missingReadings[index];
-                    final date = _formatDate(reading['date']);
-                    final slot = reading['slot'];
-                    final time = reading['time'];
-                    final emoji = reading['emoji'];
 
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: _buildMissingCard(
-                        date: date,
-                        slot: slot,
-                        time: time,
-                        emoji: emoji,
+                        rawDate: reading['date'], // ✅ "2026-03-25"
+                        slot: reading['slot'],
+                        time: reading['time'],
+                        emoji: reading['emoji'],
+                        onTap: () {
+                          // ✅ Navigate to AddReadingScreen with card's date
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => AddReadingScreen(
+                                timeOfDay: reading['slot'],
+                                station: widget.station,
+                                uploadDate: reading['date'], // ✅ raw date
+                              ),
+                            ),
+                          ).then((_) =>
+                              _loadPendingUploads()); // refresh on return
+                        },
                       ),
                     );
                   },
@@ -185,122 +196,122 @@ class _PastUploadsScreenState extends State<PastUploadsScreen> {
   }
 
   Widget _buildMissingCard({
-    required String date,
+    required String rawDate, // ✅ raw "2026-03-25" used for navigation
     required String slot,
     required String time,
     required String emoji,
+    required VoidCallback onTap, // ✅ new
   }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-      decoration: BoxDecoration(
-        color: _card,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: _amber.withOpacity(0.5),
+    return GestureDetector(
+      onTap: onTap, // ✅ tappable
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+        decoration: BoxDecoration(
+          color: _card,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: _amber.withOpacity(0.5)),
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Date row
-          Row(
-            children: [
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: _amber.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  date,
-                  style: TextStyle(
-                    color: _amberLight,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Date row
+            Row(
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: _amber.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    _formatDate(rawDate), // ✅ formatted only for display
+                    style: TextStyle(
+                      color: _amberLight,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
-              ),
-              const Spacer(),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: _amber.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  "Missing",
-                  style: TextStyle(
-                    color: _amberLight,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
+                const Spacer(),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _amber.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    "Missing",
+                    style: TextStyle(
+                      color: _amberLight,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
+              ],
+            ),
+            const SizedBox(height: 14),
 
-          // Slot info row
-          Row(
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: _amber.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Center(
-                  child: Text(emoji, style: const TextStyle(fontSize: 26)),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      slot,
-                      style: TextStyle(
-                        color: _textPrimary,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      time,
-                      style: TextStyle(
-                        color: _textSecondary,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // Status badge
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: _amber.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: _amber.withOpacity(0.3)),
-                ),
-                child: Text(
-                  "Due",
-                  style: TextStyle(
-                    color: _amberLight,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
+            // Slot info row
+            Row(
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: _amber.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Center(
+                    child: Text(emoji, style: const TextStyle(fontSize: 26)),
                   ),
                 ),
-              ),
-            ],
-          ),
-        ],
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(slot,
+                          style: TextStyle(
+                              color: _textPrimary,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 3),
+                      Text(time,
+                          style:
+                              TextStyle(color: _textSecondary, fontSize: 13)),
+                    ],
+                  ),
+                ),
+                // ✅ Due badge with arrow hint
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: _amber.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: _amber.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text("Due",
+                          style: TextStyle(
+                              color: _amberLight,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700)),
+                      const SizedBox(width: 4),
+                      Icon(Icons.arrow_forward_ios,
+                          color: _amberLight, size: 10),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

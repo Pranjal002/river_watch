@@ -4,7 +4,7 @@ import 'package:river_watch/screens/add_reading_screen.dart';
 import 'package:river_watch/screens/profile_screen.dart';
 import 'package:river_watch/screens/contact_screen.dart';
 import 'package:river_watch/services/api_service.dart';
-import 'package:river_watch/screens/past_uploads_screen.dart'; // ← New Screen
+import 'package:river_watch/screens/past_uploads_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -58,9 +58,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  /// Returns 'done', 'due', or 'upcoming'
   String _getSlotStatus(String slot) {
-    // API keys: isMorningMissing, isAfternoonMissing, isEveningMissing
     final key = 'is${slot}Missing';
     final isMissing = _readingStatus[key];
     if (isMissing == null) return 'upcoming';
@@ -79,6 +77,12 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // ✅ Returns raw "yyyy-MM-dd" string from API for sending to backend
+  String get _todayRaw {
+    return _readingStatus['today'] ??
+        DateTime.now().toIso8601String().substring(0, 10);
+  }
+
   void _goToAddReading(String timeOfDay) {
     if (_userStation == null) {
       _showSnack("Station not loaded yet. Please wait.");
@@ -89,12 +93,14 @@ class _HomeScreenState extends State<HomeScreen> {
           isWarning: true);
       return;
     }
+
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => AddReadingScreen(
           timeOfDay: timeOfDay,
           station: _userStation,
+          uploadDate: _todayRaw, // ✅ pass API date e.g. "2026-03-31"
         ),
       ),
     ).then((_) => _loadAllData());
@@ -462,8 +468,6 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           _drawerTile(
               Icons.home_outlined, "Home", () => Navigator.pop(context)),
-          // NEW: Past Uploads Tab (just above Profile)
-
           _drawerTile(Icons.history, "Past Uploads", () {
             Navigator.pop(context);
             if (_userStation != null) {
@@ -472,6 +476,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 MaterialPageRoute(
                   builder: (_) => PastUploadsScreen(
                     stationUserId: _userStation['stationUserId'].toString(),
+                    station: _userStation, // ✅ pass full station object
                   ),
                 ),
               );

@@ -6,29 +6,17 @@ class AuthProvider extends ChangeNotifier {
   final ApiService _api = ApiService();
   bool isLoading = false;
 
-  Future<void> login(
-      String email, String password, BuildContext context) async {
+  // ✅ REPLACE the entire login method with this:
+  Future<void> login(String userName, String password) async {
     isLoading = true;
     notifyListeners();
 
     try {
-      await _api.login(email, password);
-      if (context.mounted) {
-        Navigator.pushReplacementNamed(context, '/home');
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Login Failed: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      await _api.login(userName, password); // throws if credentials are wrong
+    } finally {
+      isLoading = false;
+      notifyListeners();
     }
-
-    isLoading = false;
-    notifyListeners();
   }
 
   Future<void> logout(BuildContext context) async {

@@ -8,11 +8,13 @@ import 'package:image/image.dart' as img;
 class AddReadingScreen extends StatefulWidget {
   final String timeOfDay;
   final dynamic station;
+  final String uploadDate; // ✅ new: "2026-03-31" from API
 
   const AddReadingScreen({
     super.key,
     required this.timeOfDay,
     required this.station,
+    required this.uploadDate, // ✅ new
   });
 
   @override
@@ -27,7 +29,6 @@ class _AddReadingScreenState extends State<AddReadingScreen> {
   final _remarksController = TextEditingController();
   bool _isSubmitting = false;
 
-  // Dark theme colors (matching home screen)
   static const Color _bg = Color(0xFF0D1117);
   static const Color _card = Color(0xFF161B22);
   static const Color _cardBorder = Color(0xFF30363D);
@@ -36,7 +37,6 @@ class _AddReadingScreenState extends State<AddReadingScreen> {
   static const Color _green = Color(0xFF2EA043);
   static const Color _fieldColor = Color(0xFF1C2128);
 
-  /// Morning = 1, Afternoon = 2, Evening = 3
   int get _readingTime {
     switch (widget.timeOfDay.toLowerCase()) {
       case 'morning':
@@ -50,39 +50,22 @@ class _AddReadingScreenState extends State<AddReadingScreen> {
     }
   }
 
-  // Replace your existing _convertToPng function with this one
   Future<File?> _convertToPng(File imageFile) async {
     try {
       print("🔄 Converting image to PNG: ${imageFile.path}");
-
-      // Get file statistics (including modified time)
       final fileStat = await imageFile.stat();
-
-      // Use modified time (for camera photos, this is usually the capture time)
       final captureTime = fileStat.modified;
-
-      // Format timestamp: YYYYMMDD_HHMMSS (e.g., 20260331_195809)
       final formattedTime = _formatTimestamp(captureTime);
-
-      // Read the image file
       final bytes = await imageFile.readAsBytes();
-
-      // Decode the image
       img.Image? image = img.decodeImage(bytes);
-
       if (image == null) {
         print("❌ Failed to decode image");
         return null;
       }
-
-      // Create a temporary directory for the converted image
       final tempDir = await getTemporaryDirectory();
-      final pngFile = File('${tempDir.path}/converted_${formattedTime}.png');
-
-      // Encode as PNG and save
+      final pngFile = File('${tempDir.path}/converted_$formattedTime.png');
       final pngBytes = img.encodePng(image);
       await pngFile.writeAsBytes(pngBytes);
-
       print(
           "✅ Image converted to PNG: ${pngFile.path}, Size: ${await pngFile.length()} bytes");
       return pngFile;
@@ -92,9 +75,7 @@ class _AddReadingScreenState extends State<AddReadingScreen> {
     }
   }
 
-// Add this helper function right after _convertToPng
   String _formatTimestamp(DateTime timestamp) {
-    // Format: YYYYMMDD_HHMMSS
     return '${timestamp.year}'
         '${timestamp.month.toString().padLeft(2, '0')}'
         '${timestamp.day.toString().padLeft(2, '0')}'
@@ -118,13 +99,11 @@ class _AddReadingScreenState extends State<AddReadingScreen> {
         print("📸 Original image: ${originalFile.path}");
         print("📸 Original size: ${await originalFile.length()} bytes");
 
-        // Convert to PNG if needed
         File? pngFile = await _convertToPng(originalFile);
 
         if (pngFile != null) {
           setState(() => _selectedImage = pngFile);
         } else {
-          // If conversion fails, try using original file
           setState(() => _selectedImage = originalFile);
           print("⚠️ Using original file (conversion failed)");
         }
@@ -159,6 +138,7 @@ class _AddReadingScreenState extends State<AddReadingScreen> {
         readingTime: _readingTime,
         remarks: _remarksController.text.trim(),
         imageFile: _selectedImage,
+        uploadOn: widget.uploadDate, // ✅ pass date e.g. "2026-03-31"
       );
 
       if (mounted) {
@@ -240,6 +220,11 @@ class _AddReadingScreenState extends State<AddReadingScreen> {
                           "River: ${widget.station['riverName'] ?? 'N/A'}",
                           style: TextStyle(color: _textSecondary, fontSize: 13),
                         ),
+                        // ✅ Show the upload date so user can confirm
+                        Text(
+                          "Date: ${widget.uploadDate}",
+                          style: TextStyle(color: _textSecondary, fontSize: 13),
+                        ),
                       ],
                     ),
                   ),
@@ -254,7 +239,8 @@ class _AddReadingScreenState extends State<AddReadingScreen> {
             _buildTextField(
               controller: _gaugeController,
               hint: "e.g. 3.45",
-              keyboardType: TextInputType.numberWithOptions(decimal: true),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
             ),
 
             const SizedBox(height: 20),

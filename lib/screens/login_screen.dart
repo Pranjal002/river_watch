@@ -64,27 +64,40 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Future<void> _login() async {
+    final userName = _userNameController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (userName.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Please enter username and password'),
+          backgroundColor: Colors.red.shade800,
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     final auth = Provider.of<AuthProvider>(context, listen: false);
 
     try {
-      await auth.login(
-        _userNameController.text.trim(),
-        _passwordController.text.trim(),
-        context,
-      );
+      await auth.login(userName, password); // throws on wrong credentials
 
-      await Future.delayed(const Duration(milliseconds: 300));
-
+      // ✅ Only reaches here if login succeeded (statusCode == 200)
       if (mounted) {
         Navigator.pushReplacementNamed(context, '/home');
       }
     } catch (e) {
+      // ✅ Only reaches here if credentials are wrong or network error
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Login Failed: $e'),
+            content: Text(
+                'Login Failed: ${e.toString().replaceAll('Exception: ', '')}'),
             backgroundColor: Colors.red.shade800,
             behavior: SnackBarBehavior.floating,
             shape:
@@ -92,9 +105,9 @@ class _LoginScreenState extends State<LoginScreen>
           ),
         );
       }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
-
-    if (mounted) setState(() => _isLoading = false);
   }
 
   @override

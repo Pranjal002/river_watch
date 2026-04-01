@@ -9,12 +9,10 @@ class ApiService {
 
   static const String loginEndpoint = "$baseUrl/Auth/sign-in";
   static const String stationsEndpoint = "$baseUrl/station-user";
-  static const String gaugeReadingEndpoint =
-      "$baseUrl/gauge-reading"; // New endpoint
+  static const String gaugeReadingEndpoint = "$baseUrl/gauge-reading";
 
   String? _accessToken;
 
-  // Save Token
   Future<void> saveToken(String accessToken) async {
     _accessToken = accessToken;
     final prefs = await SharedPreferences.getInstance();
@@ -22,39 +20,30 @@ class ApiService {
     print("✅ Token Saved Successfully");
   }
 
-  // Get Token (with force reload from storage)
   Future<String?> getToken() async {
     if (_accessToken != null) return _accessToken;
-    print(_accessToken);
-    print('fsaf');
     final prefs = await SharedPreferences.getInstance();
     _accessToken = prefs.getString('accessToken');
-
     print(_accessToken != null
         ? "✅ Token loaded from storage"
         : "❌ No token in storage");
     return _accessToken;
   }
 
-  // ====================== JWT DECODE ======================
   String? getUserIdFromToken() {
     final token = _accessToken;
     if (token == null) {
       print("❌ No token available for decoding");
       return null;
     }
-
     try {
       final parts = token.split('.');
       final payloadString =
           utf8.decode(base64Url.decode(base64Url.normalize(parts[1])));
       final payload = jsonDecode(payloadString);
-
       print("🔍 JWT Payload: $payload");
-
       final userId = payload['id']?.toString();
       print("✅ Extracted User ID: $userId");
-
       return userId;
     } catch (e) {
       print("❌ JWT Decode Error: $e");
@@ -62,7 +51,6 @@ class ApiService {
     }
   }
 
-  // ====================== LOGIN ======================
   Future<void> login(String userName, String password) async {
     print("🔄 Attempting login...");
     final response = await http.post(
@@ -74,14 +62,8 @@ class ApiService {
     print("📥 Login Response: ${response.body}");
 
     if (response.statusCode == 200) {
-      print('gfb ssssd');
-
       final data = jsonDecode(response.body);
-      print('gfb2222 sd');
-      print(data);
-
       if (data['statusCode'] == 200 && data['data'] != null) {
-        print('gfb sd');
         await saveToken(data['data']['accessToken']);
         print("🎉 Login Successful - Token Saved");
       } else {
@@ -92,23 +74,15 @@ class ApiService {
     }
   }
 
-  // ====================== GET USER STATIONS ======================
   Future<List<dynamic>> getUserStations() async {
     print('🔄 Starting getUserStations()');
-
     await getToken();
-
     final userId = getUserIdFromToken();
     print('👤 User ID: $userId');
-
-    if (userId == null) {
-      throw Exception("User ID not found in token");
-    }
+    if (userId == null) throw Exception("User ID not found in token");
 
     final token = await getToken();
-    if (token == null) {
-      throw Exception("No token found");
-    }
+    if (token == null) throw Exception("No token found");
 
     final fullUrl = "$stationsEndpoint/user/$userId";
     print('🌐 Hitting URL: $fullUrl');
@@ -126,23 +100,18 @@ class ApiService {
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       print('✅ Stations Response: $data');
-
-      // FIXED: Your API returns a single object, not wrapped in 'data' array
-      // So we wrap it in a list so the rest of the app works smoothly
       if (data is Map<String, dynamic>) {
-        return [data]; // ← Convert single object to List with one item
+        return [data];
       } else if (data is List) {
         return data;
       } else {
         return [];
       }
     } else {
-      print('❌ Failed with status: ${response.statusCode} - ${response.body}');
       throw Exception("Failed to load stations: ${response.statusCode}");
     }
   }
 
-  // ====================== GET READINGS ======================
   Future<List<dynamic>> getReadings(String stationId) async {
     final token = await getToken();
     if (token == null) return [];
@@ -162,13 +131,13 @@ class ApiService {
     return [];
   }
 
-  /// ====================== SUBMIT GAUGE READING (Clean & Fixed) ======================
-  /// ====================== SUBMIT GAUGE READING (Updated for PNG) ======================
+  /// ✅ uploadOn added: "2026-03-31" string sent as UploadOn field
   Future<void> submitGaugeReading({
     required String stationUserId,
     required double gaugeReading,
     required int readingTime,
     required String remarks,
+    required String uploadOn, // ✅ new: e.g. "2026-03-31"
     File? imageFile,
   }) async {
     final token = await getToken();
@@ -183,27 +152,22 @@ class ApiService {
     request.fields['StationUserId'] = stationUserId;
     request.fields['ReadingTime'] = readingTime.toString();
     request.fields['Remarks'] = remarks;
+    request.fields['UploadOn'] = uploadOn; // ✅ new field
 
-    // Image (if provided)
     if (imageFile != null) {
-      // Verify file exists and has content
       if (!await imageFile.exists()) {
         throw Exception("Image file does not exist");
       }
-
       final fileSize = await imageFile.length();
-      if (fileSize == 0) {
-        throw Exception("Image file is empty");
-      }
+      if (fileSize == 0) throw Exception("Image file is empty");
 
       print("📸 Adding image: ${imageFile.path}, Size: $fileSize bytes");
 
-      // Always send as PNG since we've converted it
       request.files.add(
         await http.MultipartFile.fromPath(
           'Image',
           imageFile.path,
-          contentType: MediaType('image', 'png'), // Force PNG content type
+          contentType: MediaType('image', 'png'),
         ),
       );
     }
@@ -213,6 +177,7 @@ class ApiService {
     print("StationUserId: $stationUserId");
     print("ReadingTime: $readingTime");
     print("Remarks: $remarks");
+    print("UploadOn: $uploadOn"); // ✅ log it
     print("Image: ${imageFile?.path ?? 'No image'}");
     print("==============================");
 
@@ -235,7 +200,6 @@ class ApiService {
     }
   }
 
-  // ====================== UPLOAD PHOTO (Keep if needed elsewhere) ======================
   Future<String> uploadPhoto(File file, String stationId) async {
     final token = await getToken();
     if (token == null) throw Exception("No token");
@@ -257,7 +221,6 @@ class ApiService {
     }
   }
 
-// Add this method in ApiService
   Future<Map<String, dynamic>> getPendingUploads(String stationUserId) async {
     final token = await getToken();
     if (token == null) throw Exception("No token found");
@@ -273,13 +236,13 @@ class ApiService {
     );
 
     if (response.statusCode == 200) {
+      print(response.body);
       return jsonDecode(response.body);
     } else {
       throw Exception("Failed to load pending uploads");
     }
   }
 
-// ====================== GET READING TIME STATUS ======================
   Future<Map<String, dynamic>> getReadingTimeStatus(
       String stationUserId) async {
     print(stationUserId);
@@ -287,7 +250,6 @@ class ApiService {
     if (token == null) throw Exception("No token found");
 
     final fullUrl = "$baseUrl/gauge-reading/reading-time-status/$stationUserId";
-
     print('🌐 Hitting Reading Status URL: $fullUrl');
 
     final response = await http.get(
